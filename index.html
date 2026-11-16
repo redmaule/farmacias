@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Farmacias de turno – Región del Maule | RedMaule</title>
+<style>
+  :root { --rojo:#c8102e; --gris:#5f6368; --borde:#e3e3e3; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color:#1a1a1a; background:#fff; }
+  .wrap { max-width:760px; margin:0 auto; padding:16px; }
+  .tag { display:inline-block; background:var(--rojo); color:#fff; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.04em; padding:4px 10px; border-radius:3px; }
+  h1 { font-size:26px; margin:10px 0 2px; }
+  .fecha { color:var(--gris); margin:0 0 14px; text-transform:capitalize; }
+  input[type=search] { width:100%; padding:12px 14px; font-size:16px; border:1px solid #ccc; border-radius:6px; margin-bottom:8px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; }
+  .chip { border:1px solid var(--borde); background:#f7f7f7; border-radius:16px; padding:5px 11px; font-size:13px; cursor:pointer; }
+  .chip:hover, .chip.on { background:var(--rojo); border-color:var(--rojo); color:#fff; }
+  h2 { font-size:18px; border-bottom:2px solid var(--rojo); padding-bottom:4px; margin:22px 0 8px; }
+  h2 span { color:var(--gris); font-weight:400; font-size:14px; }
+  .f { border:1px solid var(--borde); border-radius:8px; padding:12px 14px; margin-bottom:8px; }
+  .f b { font-size:16px; }
+  .f div { color:#333; font-size:14px; margin-top:3px; }
+  .f a { color:var(--rojo); text-decoration:none; font-weight:600; margin-right:14px; font-size:14px; }
+  .acc { margin-top:8px; }
+  .msg { padding:18px; background:#f7f7f7; border-radius:8px; color:#333; }
+  footer { color:var(--gris); font-size:12px; margin:22px 0 6px; }
+  footer a { color:var(--gris); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <span class="tag">Farmacias de turno</span>
+  <h1>Región del Maule</h1>
+  <p class="fecha" id="fecha"></p>
+  <input type="search" id="q" placeholder="Busca tu comuna o farmacia…" autocomplete="off">
+  <div class="chips" id="chips"></div>
+  <div id="lista"><div class="msg">Cargando farmacias de turno…</div></div>
+  <footer>Fuente: Farmanet, Ministerio de Salud. Los turnos pueden cambiar; confirma por teléfono antes de ir.
+    Si no ves tu comuna, revisa <a href="https://seremienlinea.minsal.cl/asdigital/mfarmacias/mapa.html" target="_blank" rel="noopener">el mapa oficial del Minsal</a>.</footer>
+</div>
+<script>
+(function () {
+  var URL_DATOS = "https://midas.minsal.cl/farmacia_v2/WS/getLocalesTurnos.php";
+  var REGION = "9"; // Maule en Farmanet
+  var lista = document.getElementById("lista"), q = document.getElementById("q"), chips = document.getElementById("chips");
+  var grupos = [];
+
+  document.getElementById("fecha").textContent =
+    new Date().toLocaleDateString("es-CL", { weekday:"long", day:"numeric", month:"long", year:"numeric", timeZone:"America/Santiago" });
+
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function titulo(s) { return String(s || "").trim().toLowerCase().replace(/(^|[\s(.-])([a-záéíóúñü])/g, function (m, a, b) { return a + b.toUpperCase(); }); }
+  function norm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+  function hora(h) { return String(h || "").slice(0, 5); }
+  function avisarAltura() { try { parent.postMessage({ farmaciasAltura: document.documentElement.scrollHeight }, "*"); } catch (e) {} }
+
+  function pintar() {
+    var t = norm(q.value.trim()), html = "", total = 0;
+    grupos.forEach(function (g) {
+      var items = g.items.filter(function (f) { return !t || norm(g.comuna).indexOf(t) >= 0 || norm(f.local_nombre).indexOf(t) >= 0 || norm(f.local_direccion).indexOf(t) >= 0; });
+      if (!items.length) return;
+      total += items.length;
+      html += '<h2>' + esc(titulo(g.comuna)) + ' <span>(' + items.length + ')</span></h2>';
+      items.forEach(function (f) {
+        var tel = String(f.local_telefono || "").replace(/[^\d+]/g, "");
+        var telLink = tel ? (tel.charAt(0) === "+" ? tel : "+56" + tel.replace(/^56/, "")) : "";
+        var mapa = (f.local_lat && f.local_lng && f.local_lat !== "0")
+          ? "https://www.google.com/maps/search/?api=1&query=" + f.local_lat + "," + f.local_lng
+          : "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(f.local_direccion + ", " + g.comuna + ", Chile");
+        html += '<div class="f"><b>' + esc(titulo(f.local_nombre)) + '</b>' +
+          '<div>' + esc(titulo(f.local_direccion)) + '</div>' +
+          '<div>Horario: ' + esc(hora(f.funcionamiento_hora_apertura)) + ' a ' + esc(hora(f.funcionamiento_hora_cierre)) + ' hrs.</div>' +
+          '<div class="acc">' + (telLink ? '<a href="tel:' + esc(telLink) + '">Llamar</a>' : '') +
+          '<a href="' + esc(mapa) + '" target="_blank" rel="noopener">Cómo llegar</a></div></div>';
+      });
+    });
+    lista.innerHTML = total ? html : '<div class="msg">No encontramos farmacias de turno para “' + esc(q.value) + '”.</div>';
+    avisarAltura();
+  }
+
+  function cargar() {
+    fetch(URL_DATOS, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (data) {
+        var m = {};
+        data.filter(function (x) { return String(x.fk_region) === REGION; }).forEach(function (x) {
+          var c = String(x.comuna_nombre || "").trim(); (m[c] = m[c] || []).push(x);
+        });
+        grupos = Object.keys(m).sort(function (a, b) { return a.localeCompare(b, "es"); }).map(function (c) {
+          return { comuna: c, items: m[c].sort(function (a, b) { return String(a.local_nombre).localeCompare(String(b.local_nombre), "es"); }) };
+        });
+        if (!grupos.length) { lista.innerHTML = '<div class="msg">Hoy el Minsal no informa farmacias de turno para el Maule. Revisa el mapa oficial más abajo.</div>'; avisarAltura(); return; }
+        chips.innerHTML = grupos.map(function (g) { return '<button class="chip" type="button" data-c="' + esc(g.comuna) + '">' + esc(titulo(g.comuna)) + '</button>'; }).join("");
+        pintar();
+      })
+      .catch(function () {
+        lista.innerHTML = '<div class="msg">No pudimos cargar los turnos en este momento. Recarga la página o revisa el mapa oficial del Minsal más abajo.</div>';
+        avisarAltura();
+      });
+  }
+
+  chips.addEventListener("click", function (e) {
+    var b = e.target.closest(".chip"); if (!b) return;
+    var on = b.classList.contains("on");
+    [].forEach.call(chips.children, function (x) { x.classList.remove("on"); });
+    if (!on) { b.classList.add("on"); q.value = titulo(b.getAttribute("data-c")); } else { q.value = ""; }
+    pintar();
+  });
+  q.addEventListener("input", function () { [].forEach.call(chips.children, function (x) { x.classList.remove("on"); }); pintar(); });
+  window.addEventListener("resize", avisarAltura);
+  cargar();
+})();
+</script>
+</body>
+</html>
